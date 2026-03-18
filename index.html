@@ -1,231 +1,190 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>SkyFlap Game</title>
-    <style>
-        body {
-            margin: 0;
-            background: #222;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: Arial, sans-serif;
-            color: #fff;
-        }
-        canvas {
-            background: linear-gradient(#4ec0ca, #ffffff);
-            border: 2px solid #000;
-        }
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #fff;
-            font-size: 18px;
-            text-shadow: 1px 1px 2px #000;
-        }
-    </style>
+<meta charset="UTF-8">
+<title>SkyFlap Fullscreen</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #222;
+        height: 100%;
+        width: 100%;
+    }
+    canvas {
+        display: block;
+        background: linear-gradient(#4ec0ca, #ffffff);
+    }
+</style>
 </head>
 <body>
-<div id="info">Press SPACE / CLICK / TAP to flap</div>
-<canvas id="gameCanvas" width="400" height="600"></canvas>
+
+<canvas id="game"></canvas>
 
 <script>
-    // --- Game constants (mirroring your C#) ---
-    const CanvasWidth = 400;
-    const CanvasHeight = 600;
-    const Gravity = 0.05;
-    const JumpStrength = -2.4;
-    const InitialPipeSpeed = 0.9;
-    const InitialSpawnRate = 240; // frames
-    const PipeGap = 160;
-    const BirdSize = 34;
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-    const GameState = {
-        Start: 0,
-        Playing: 1,
-        GameOver: 2
-    };
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // Game constants (scaled to screen)
+    let CW = () => canvas.width;
+    let CH = () => canvas.height;
+
+    const Gravity = 0.05;
+    const JumpStrength = -3.5;
+    const InitialPipeSpeed = 1.8;
+    const InitialSpawnRate = 240;
+    const PipeGap = 200;
+    const BirdSize = 35;
+
+    const GameState = { Start: 0, Playing: 1, GameOver: 2 };
 
     class Pipe {
         constructor(x, topHeight) {
             this.x = x;
             this.topHeight = topHeight;
+            this.width = 80;
             this.passed = false;
-            this.width = 60;
         }
     }
 
-    class SkyFlapManager {
+    class SkyFlap {
         constructor() {
-            this.currentState = GameState.Start;
-            this.score = 0;
-            this.highScore = 0;
-
-            this.birdY = 0;
-            this.birdVelocity = 0;
-            this.pipes = [];
-            this.frameCount = 0;
-            this.currentPipeSpeed = InitialPipeSpeed;
-            this.currentSpawnRate = InitialSpawnRate;
-
             this.reset();
         }
 
         reset() {
-            this.birdY = CanvasHeight / 2;
-            this.birdVelocity = 0;
+            this.state = GameState.Playing;
+            this.birdY = CH() / 2;
+            this.birdVel = 0;
             this.pipes = [];
-            this.frameCount = 0;
-            this.currentPipeSpeed = InitialPipeSpeed;
-            this.currentSpawnRate = InitialSpawnRate;
+            this.frame = 0;
             this.score = 0;
-            this.currentState = GameState.Playing;
+            this.high = this.high || 0;
+            this.pipeSpeed = InitialPipeSpeed;
+            this.spawnRate = InitialSpawnRate;
         }
 
         jump() {
-            if (this.currentState === GameState.Playing) {
-                this.birdVelocity = JumpStrength;
-                this.triggerSound("jump");
+            if (this.state === GameState.Playing) {
+                this.birdVel = JumpStrength;
             } else {
                 this.reset();
             }
         }
 
         update() {
-            if (this.currentState !== GameState.Playing) return;
+            if (this.state !== GameState.Playing) return;
 
-            // Bird physics
-            this.birdVelocity += Gravity;
-            this.birdY += this.birdVelocity;
+            this.birdVel += Gravity;
+            this.birdY += this.birdVel;
 
-            // Progressive difficulty
-            const speedBonus = Math.floor(this.score / 5.0) * 0.03;
-            this.currentPipeSpeed = InitialPipeSpeed + speedBonus;
+            // Difficulty scaling
+            const speedBonus = Math.floor(this.score / 5) * 0.3;
+            this.pipeSpeed = InitialPipeSpeed + speedBonus;
 
-            const targetDistance = InitialPipeSpeed * InitialSpawnRate;
-            this.currentSpawnRate = Math.max(60, Math.floor(targetDistance / this.currentPipeSpeed));
+            const targetDist = InitialPipeSpeed * InitialSpawnRate;
+            this.spawnRate = Math.max(60, Math.floor(targetDist / this.pipeSpeed));
 
-            // Collision with ground/ceiling
-            if (this.birdY + BirdSize / 2 > CanvasHeight || this.birdY - BirdSize / 2 < 0) {
-                this.endGame();
+            // Ground / ceiling
+            if (this.birdY < 0 || this.birdY + BirdSize > CH()) {
+                this.end();
             }
 
-            // Pipe management
-            this.frameCount++;
-            if (this.frameCount >= this.currentSpawnRate) {
-                this.frameCount = 0;
+            // Spawn pipes
+            this.frame++;
+            if (this.frame >= this.spawnRate) {
+                this.frame = 0;
                 this.spawnPipe();
             }
 
+            // Move pipes
             for (let i = this.pipes.length - 1; i >= 0; i--) {
-                const pipe = this.pipes[i];
-                pipe.x -= this.currentPipeSpeed;
+                const p = this.pipes[i];
+                p.x -= this.pipeSpeed;
 
-                // Collision with pipes
-                if (this.checkCollision(pipe)) {
-                    this.endGame();
-                }
+                if (this.checkCollision(p)) this.end();
 
-                // Scoring
-                const birdLeft = CanvasWidth / 4 - BirdSize / 2;
-                if (!pipe.passed && pipe.x + pipe.width < birdLeft) {
-                    pipe.passed = true;
+                const birdLeft = CW() * 0.25 - BirdSize / 2;
+                if (!p.passed && p.x + p.width < birdLeft) {
+                    p.passed = true;
                     this.score++;
-                    this.triggerSound("score");
-                    if (this.score > this.highScore) this.highScore = this.score;
+                    if (this.score > this.high) this.high = this.score;
                 }
 
-                // Cleanup
-                if (pipe.x + pipe.width < 0) {
-                    this.pipes.splice(i, 1);
-                }
+                if (p.x + p.width < 0) this.pipes.splice(i, 1);
             }
         }
 
         spawnPipe() {
-            const minHeight = 50;
-            const maxHeight = CanvasHeight - PipeGap - minHeight;
-            const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
-            this.pipes.push(new Pipe(CanvasWidth, topHeight));
+            const minH = 50;
+            const maxH = CH() - PipeGap - minH;
+            const top = Math.random() * (maxH - minH) + minH;
+            this.pipes.push(new Pipe(CW(), top));
         }
 
-        checkCollision(pipe) {
-            const birdLeft = CanvasWidth / 4 - BirdSize / 2;
-            const birdRight = CanvasWidth / 4 + BirdSize / 2;
-            const birdTop = this.birdY - BirdSize / 2;
-            const birdBottom = this.birdY + BirdSize / 2;
+        checkCollision(p) {
+            const birdX = CW() * 0.25;
+            const birdLeft = birdX - BirdSize / 2;
+            const birdRight = birdX + BirdSize / 2;
+            const birdTop = this.birdY;
+            const birdBottom = this.birdY + BirdSize;
 
-            if (birdRight > pipe.x && birdLeft < pipe.x + pipe.width) {
-                if (birdTop < pipe.topHeight || birdBottom > pipe.topHeight + PipeGap) {
+            if (birdRight > p.x && birdLeft < p.x + p.width) {
+                if (birdTop < p.topHeight || birdBottom > p.topHeight + PipeGap) {
                     return true;
                 }
             }
             return false;
         }
 
-        endGame() {
-            if (this.currentState !== GameState.GameOver) {
-                this.currentState = GameState.GameOver;
-                this.triggerSound("gameOver");
-            }
-        }
-
-        triggerSound(type) {
-            console.log("Playing sound:", type);
+        end() {
+            this.state = GameState.GameOver;
         }
     }
 
-    // --- Setup canvas and game loop ---
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-
-    const game = new SkyFlapManager();
+    const game = new SkyFlap();
 
     function draw() {
-        // Clear
-        ctx.clearRect(0, 0, CanvasWidth, CanvasHeight);
-
-        // Background
-        ctx.fillStyle = "#4ec0ca";
-        ctx.fillRect(0, 0, CanvasWidth, CanvasHeight);
+        ctx.clearRect(0, 0, CW(), CH());
 
         // Pipes
         ctx.fillStyle = "#3cba54";
-        for (const pipe of game.pipes) {
-            // Top pipe
-            ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
-            // Bottom pipe
-            ctx.fillRect(pipe.x, pipe.topHeight + PipeGap, pipe.width, CanvasHeight - (pipe.topHeight + PipeGap));
+        for (const p of game.pipes) {
+            ctx.fillRect(p.x, 0, p.width, p.topHeight);
+            ctx.fillRect(p.x, p.topHeight + PipeGap, p.width, CH() - (p.topHeight + PipeGap));
         }
 
         // Bird
-        const birdX = CanvasWidth / 4;
+        const birdX = CW() * 0.25;
         ctx.fillStyle = "#ffeb3b";
         ctx.beginPath();
         ctx.arc(birdX, game.birdY, BirdSize / 2, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "#000";
         ctx.stroke();
 
         // Score
         ctx.fillStyle = "#fff";
-        ctx.font = "24px Arial";
-        ctx.fillText("Score: " + game.score, 10, 30);
-        ctx.fillText("High: " + game.highScore, 10, 60);
+        ctx.font = "32px Arial";
+        ctx.fillText("Score: " + game.score, 20, 40);
+        ctx.fillText("High: " + game.high, 20, 80);
 
-        if (game.currentState === GameState.GameOver) {
+        if (game.state === GameState.GameOver) {
             ctx.fillStyle = "rgba(0,0,0,0.5)";
-            ctx.fillRect(0, 0, CanvasWidth, CanvasHeight);
+            ctx.fillRect(0, 0, CW(), CH());
             ctx.fillStyle = "#fff";
-            ctx.font = "36px Arial";
+            ctx.font = "48px Arial";
             ctx.textAlign = "center";
-            ctx.fillText("Game Over", CanvasWidth / 2, CanvasHeight / 2 - 20);
-            ctx.font = "20px Arial";
-            ctx.fillText("Click / Tap / Press SPACE to restart", CanvasWidth / 2, CanvasHeight / 2 + 20);
+            ctx.fillText("Game Over", CW() / 2, CH() / 2 - 20);
+            ctx.font = "24px Arial";
+            ctx.fillText("Tap / Click / Space to restart", CW() / 2, CH() / 2 + 20);
             ctx.textAlign = "start";
         }
     }
@@ -236,30 +195,21 @@
         requestAnimationFrame(loop);
     }
 
-    // --- Input handling ---
-    function handleFlap() {
-        if (game.currentState === GameState.GameOver) {
-            game.reset();
-        } else {
-            game.jump();
-        }
+    // Controls
+    function flap() {
+        if (game.state === GameState.GameOver) game.reset();
+        else game.jump();
     }
 
-    window.addEventListener("keydown", (e) => {
-        if (e.code === "Space") {
-            e.preventDefault();
-            handleFlap();
-        }
+    window.addEventListener("keydown", e => {
+        if (e.code === "Space") flap();
     });
 
-    canvas.addEventListener("mousedown", handleFlap);
-    canvas.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        handleFlap();
-    }, { passive: false });
+    canvas.addEventListener("mousedown", flap);
+    canvas.addEventListener("touchstart", flap);
 
-    // Start loop
     loop();
 </script>
+
 </body>
 </html>
