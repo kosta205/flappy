@@ -33,9 +33,9 @@ let score;
 let gameOver;
 let speed;
 let started;
-let gravity = 0.05; // slower fall
-let jumpStrength = 1.4;
-let jumpFrames = 20;
+let gravity = 0.5; // slower fall
+let jumpStrength = 12;
+let jumpFrames = 5;
 let jumpCounter = 0;
 
 function init() {
@@ -106,7 +106,8 @@ function update() {
     pipes.push({
       x: canvas.width,
       top: top,
-      bottom: top + gap
+      bottom: top + gap,
+      passed: false // track if bird has passed this pipe
     });
   }
 
@@ -123,13 +124,18 @@ function update() {
       gameOver = true;
       document.getElementById("restart").style.display = "block";
     }
+
+    // Increase score when bird passes pipe
+    if (!p.passed && bird.x > p.x + 50) {
+      score++;
+      p.passed = true;
+    }
   });
 
   // Remove off-screen pipes
   pipes = pipes.filter(p => p.x > -50);
 
-  score++;
-  speed += 0.00000005; // gradually faster
+  speed += 0.0005; // gradually faster
 }
 
 function draw() {
