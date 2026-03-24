@@ -274,8 +274,7 @@
 
     // Controls
     function flap() {
-        if (game.state === GameState.GameOver) game.reset();
-        else game.jump();
+        game.jump();
     }
 
     window.addEventListener("keydown", e => {
