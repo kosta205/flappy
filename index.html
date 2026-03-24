@@ -70,11 +70,13 @@
             this.high = this.high || 0;
             this.pipeSpeed = InitialPipeSpeed;
             this.spawnRate = InitialSpawnRate;
+            this.wingFlap = 0;
         }
 
         jump() {
             if (this.state === GameState.Playing) {
                 this.birdVel = JumpStrength;
+                this.wingFlap = 1;
             } else {
                 this.reset();
             }
@@ -83,18 +85,24 @@
         update() {
             if (this.state !== GameState.Playing) return;
 
+            if (this.wingFlap > 0) {
+                this.wingFlap = Math.max(0, this.wingFlap - 0.05);
+            }
+
             this.birdVel += Gravity;
             this.birdY += this.birdVel;
 
             // Difficulty scaling
-            const speedBonus = Math.floor(this.score / 5) * 0.3;
+            const speedBonus = Math.floor(this.score / 5) * 0.03;
             this.pipeSpeed = InitialPipeSpeed + speedBonus;
 
             const targetDist = InitialPipeSpeed * InitialSpawnRate;
             this.spawnRate = Math.max(60, Math.floor(targetDist / this.pipeSpeed));
 
-            // Ground / ceiling
-            if (this.birdY < 0 || this.birdY + BirdSize > CH()) {
+            // Ground / ceiling (using bird center and radius)
+            const birdTop = this.birdY - BirdSize / 2;
+            const birdBottom = this.birdY + BirdSize / 2;
+            if (birdTop < 0 || birdBottom > CH()) {
                 this.end();
             }
 
@@ -134,8 +142,8 @@
             const birdX = CW() * 0.25;
             const birdLeft = birdX - BirdSize / 2;
             const birdRight = birdX + BirdSize / 2;
-            const birdTop = this.birdY;
-            const birdBottom = this.birdY + BirdSize;
+            const birdTop = this.birdY - BirdSize / 2;
+            const birdBottom = this.birdY + BirdSize / 2;
 
             if (birdRight > p.x && birdLeft < p.x + p.width) {
                 if (birdTop < p.topHeight || birdBottom > p.topHeight + PipeGap) {
@@ -164,11 +172,63 @@
 
         // Bird
         const birdX = CW() * 0.25;
+        const birdR = BirdSize / 2;
+        const tilt = Math.max(-0.8, Math.min(0.8, game.birdVel * 0.1));
+
+        ctx.save();
+        ctx.translate(birdX, game.birdY);
+        ctx.rotate(tilt);
+
+        // Body
         ctx.fillStyle = "#ffeb3b";
+        ctx.strokeStyle = "#b38f1f";
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(birdX, game.birdY, BirdSize / 2, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, birdR, birdR * 0.9, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+
+        // Wing
+        const flap = Math.min(Math.max(game.wingFlap, 0), 1);
+        const wingBaseY = 0;
+        const wingCpY = wingBaseY - birdR * (0.7 - flap * 0.2);
+        const wingTipY = wingBaseY + birdR * (0.12 - flap * 0.25);
+
+        ctx.fillStyle = "#f8c31c";
+        ctx.beginPath();
+        ctx.moveTo(-birdR * 0.2, wingBaseY);
+        ctx.quadraticCurveTo(birdR * 0.2, wingCpY, birdR * 0.65, wingTipY);
+        ctx.lineTo(birdR * 0.45, wingBaseY + birdR * 0.1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Beak
+        ctx.fillStyle = "#ff8a00";
+        ctx.strokeStyle = "#a05100";
+        ctx.beginPath();
+        ctx.moveTo(birdR * 0.8, -birdR * 0.1);
+        ctx.lineTo(birdR * 1.35, 0);
+        ctx.lineTo(birdR * 0.8, birdR * 0.15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Eye
+        const eyeX = birdR * 0.35;
+        const eyeY = -birdR * 0.3;
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(eyeX, eyeY, birdR * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(eyeX + birdR * 0.05, eyeY, birdR * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
 
         // Score
         ctx.fillStyle = "#fff";
