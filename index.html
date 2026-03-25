@@ -100,7 +100,7 @@
             this.birdY += this.birdVel;
 
             // Difficulty scaling
-            const speedBonus = Math.floor(this.score / 5) * 0.03;
+            const speedBonus = Math.floor(this.score / 5) * 0.5;
             this.pipeSpeed = InitialPipeSpeed + speedBonus;
 
             const targetDist = InitialPipeSpeed * InitialSpawnRate;
